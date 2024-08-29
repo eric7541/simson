@@ -1,0 +1,155 @@
+import cv2
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+import os
+
+# 모델 로드
+try:
+    model = load_model('character_model.keras')  # 모델 파일 이름
+except Exception as e:
+    print(f"모델 로드 오류: {e}")
+
+# 비디오 파일 경로
+video_path = 'C:/Users/USER/Desktop/simson.mp4'
+output_dir = 'C:/Users/USER/Desktop/frames'
+os.makedirs(output_dir, exist_ok=True)
+
+# 비디오 캡처
+cap = cv2.VideoCapture(video_path)
+if not cap.isOpened():
+    print("비디오 파일을 열 수 없습니다.")
+    exit()
+
+frame_count = 0
+fps = cap.get(cv2.CAP_PROP_FPS)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # 프레임 크기 조정
+    resized_frame = cv2.resize(frame, (360, 640))
+    normalized_frame = resized_frame / 255.0
+    reshaped_frame = np.reshape(normalized_frame, (1, 360, 640, 3))
+
+    # 예측
+    prediction = model.predict(reshaped_frame)
+    confidence = prediction[0][0]  # 이진 분류의 경우
+
+    # 예측된 클래스에 따라 캐릭터 이름을 매핑
+    if confidence > 0.69:
+        time_in_seconds = frame_count / fps
+        print(f"프레임 {frame_count}: 신뢰도 {confidence:.2f}에서 인식됨")
+
+        # 프레임 저장
+        output_frame_path = os.path.join(output_dir, f'frame_{frame_count}.jpg')
+        cv2.imwrite(output_frame_path, frame)
+    else:
+        print(f"프레임 {frame_count}: 신뢰도가 낮아 인식되지 않음, 신뢰도: {confidence:.2f}")
+
+    frame_count += 1
+
+# 비디오 캡처 종료
+cap.release()
+cv2.destroyAllWindows()
+
+
+2번째 코드
+
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Dropout, Input, BatchNormalization
+from tensorflow.keras.optimizers import Adam
+
+# 데이터 경로
+data_dir = 'C:/Users/USER/Desktop/data'
+
+# 이미지 데이터 증강
+datagen = ImageDataGenerator(
+    rescale=1./255,
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest',
+    validation_split=0.2
+)
+
+# 훈련 데이터와 검증 데이터 생성
+train_generator = datagen.flow_from_directory(
+    data_dir,
+    target_size=(640, 360),
+    batch_size=32,
+    class_mode='binary',
+    subset='training'
+)
+
+validation_generator = datagen.flow_from_directory(
+    data_dir,
+    target_size=(640, 360),
+    batch_size=32,
+    class_mode='binary',
+    subset='validation'
+)
+
+# 모델 구축
+model = Sequential()
+model.add(Input(shape=(360, 640, 3)))
+model.add(Conv2D(32, (3, 3), activation='relu'))
+model.add(BatchNormalization())
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+model.add(Conv2D(64, (3, 3), activation='relu'))
+model.add(BatchNormalization())
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+model.add(Flatten())
+model.add(Dense(512, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(1, activation='sigmoid'))
+
+# 모델 컴파일
+optimizer = Adam(learning_rate=0.0001)
+model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# 모델 학습
+history = model.fit(train_generator, validation_data=validation_generator, epochs=20)
+
+# 모델 저장
+model.save('character_model.keras')
+
+# 한글 폰트 설정
+path = 'C:/Windows/Fonts/malgun.ttf'
+fontprop = fm.FontProperties(fname=path, size=12)
+
+# 학습 결과 시각화
+plt.figure(figsize=(12, 4))
+
+# 정확도 그래프
+plt.subplot(1, 2, 1)
+plt.plot(history.history['accuracy'], label='훈련 정확도')
+plt.plot(history.history['val_accuracy'], label='검증 정확도')
+plt.title('정확도 변화', fontproperties=fontprop)
+plt.xlabel('Epochs', fontproperties=fontprop)
+plt.ylabel('정확도', fontproperties=fontprop)
+plt.legend()
+
+# 손실 그래프
+plt.subplot(1, 2, 2)
+plt.plot(history.history['loss'], label='훈련 손실')
+plt.plot(history.history['val_loss'], label='검증 손실')
+plt.title('손실 변화', fontproperties=fontprop)
+plt.xlabel('Epochs', fontproperties=fontprop)
+plt.ylabel('손실', fontproperties=fontprop)
+plt.legend()
+
+plt.show()
